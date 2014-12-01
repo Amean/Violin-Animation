@@ -1,0 +1,148 @@
+from music21 import *
+
+class FingerMap(object):
+    def __init__(self,score):#should take in score
+        self.score = score
+        self.vlnPart = self.score.getElementById('Violin')
+        # the index of the list represents the half steps from the string note the position is on
+        # there can be multiple possible positions for a half step
+        self.positions = [[1],[1],[1],[2],[2],[3],[3,4],[4],[5],[5],[6],[6],[7],[7],[8]]
+        self.position = 1
+        self.strings = ['G3','D4','A4','E5']
+        self.string = None
+        # the index of the list represents the half steps from the initial note of the position
+        # there can be multiple possible fingers for a half step
+        self.fingers = [[1],[1,2],[2,3],[3],[3,4],[4],[4]]
+        self.finger = None
+        self.map = []
+        
+    def getFingerMap(self):
+        """returns the finger map, represented by a list of tuples that contain
+            which position, string, and finger the note is"""
+        # loops through all the notes in the violin part
+        for n in self.vlnPart.flat.notesAndRests:
+            # if the note is not a rest
+            if not n.isRest:
+                # if the note has a lyric, change position
+                if n.lyric:
+                    # findPostion also gets string
+                    self.findPosition(n)
+                    self.finger= n.lyric
+                else:
+                    self.getString(n)
+                    self.findFingerNum(n)
+                self.map += [(n,self.position,self.string,self.finger)]
+        return self.map
+               
+    def getPositionNum(self,initPos,n):
+        # gets the list of possible positions for half steps from string to the note
+        # position starts on
+        distance = initPos.semitones
+        possible = self.positions[distance]
+        # if there is more than one possible position
+        if len(possible)>1:
+            # if the enharmonic of the note is "higher" (the pitch refers to a higher note,
+            # even though they are the same note)
+            if ord(str(n.pitch.getEnharmonic())[0])>ord(str(n.pitch)[0]):
+                return min(possible)
+            return max(possible)
+        return possible[0]
+        
+    def getInitPosition(self,n):
+        """gets the interval between the string and the note where the first finger on that position is"""
+        # note where first finger on that position is
+        initPosNote= note.Note(chr(ord(str(n.pitch)[0]) + (int(n.lyric)-1))+str(n.pitch)[1])
+        return self.getInterval(note.Note(self.string),initPosNote)
+        
+    def findAllPossiblePositions(self,n):
+        possible = []
+        for string in self.strings:
+            # loop through the notes on a string (2 octaves)
+            for p in scale.ChromaticScale(string).getPitches(string,string[0]+str(int(string[1])+2)): 
+                # if its either an enharmonic or the same note
+                if (not(n.pitch==p) and not(n.pitch<p) and not(n.pitch>p))or (n.pitch==p):
+                    initPos = self.getInitPosition(n)
+                    possible += [(self.getPositionNum(initPos,n),string)]
+        return possible
+                
+    def findPosition(self,n):
+        # if the specific string of the position is indicated,
+        # change position to the one on that string
+        if len(n.lyrics)==2:
+            # the string is indicated after which finger
+            self.string = n.lyrics[1]
+            initPos = self.getInitPosition(n)
+            self.position = self.getPositionNum(initPos,n)
+        # if the finger is 0 (open string)
+        # change to first position
+        elif n.lyric==0:
+            self.position = 1
+            self.string = self.getString(n)
+        else:
+            # for the finger number given, there are up to four possible positions
+            possible = self.findAllPossiblePositions(n)
+            # get the scores of each position, choose position with best score
+            # score is determined by how many strings crossed and how high up 
+            # position is, lowest score is the best
+            positionScores = []
+            for position,string in possible:
+                prevString = self.map[-1][1]
+                # each string is a perfect fifth apart (or 7 half steps)
+                intrvl = self.getInterval(note.Note(string),note.Note(prevString))
+                distance = intrvl.semitones
+                numStringsCrossed = abs(distance/7)
+                score = position+numStringsCrossed
+                positionScores += [(position,score)]
+            # find the least score
+            scores = []
+            for i in xrange(len(positionScores)):
+                scores += [(positionScores[i])[1]]
+            bestScore = min(scores)
+            i = scores.index(bestScore)
+            self.position = positionScores[i][0]
+            self.string = string
+                    
+    def getInterval(self,note1,note2):
+        return interval.Interval(note1, note2)
+
+    def getString(self,n):
+        print "n",n.pitch
+        for string in self.strings:
+            print "string", string
+            if self.position==1:
+                initPos = interval.Interval(2)
+            else:
+                initPos = interval.Interval(self.positions.index([self.position]))
+            initPosNote = note.Note(interval.transposePitch(pitch.Pitch(string),initPos))
+            print 'initPosNote', initPosNote.pitch
+            intrvl = self.getInterval(initPosNote,n)
+            print 'interval', intrvl
+            distance = intrvl.semitones
+            print "distance", distance
+            # strings are a perfect fifth apart (7 half steps)
+            if 0<=distance<=7:
+                self.string = string
+                print "self.s", self.string
+    
+    def findFingerNum(self,n):
+        if self.position == 1:  
+            initPos = interval.Interval(2)
+            #print "n", n
+            #print "initPos",initPos
+        else:
+            initPos = interval.Interval(self.positions.index([self.position]))
+        initPosNote = note.Note(interval.transposePitch(pitch.Pitch(self.string),initPos))
+        #print "initPosNote",initPosNote
+        intrvl= self.getInterval(initPosNote,n)
+        #print "interval", intrvl
+        distance = intrvl.semitones
+        #print "distance", distance
+        possible = self.fingers[distance]
+        p1 = str(n.pitch.getEnharmonic())[0]
+        p2 = str(n.pitch)[0]
+        print "p1", p1
+        print "p2", p2
+        if ord(str(n.pitch.getEnharmonic())[0]) > ord(str(n.pitch)[0]):
+            self.finger = min(possible)
+        else:
+            self.finger = max(possible)
