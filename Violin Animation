@@ -1,0 +1,522 @@
+from Tkinter import *
+import tkFileDialog
+from music21 import *
+from eventBasedAnimationClass import EventBasedAnimationClass
+from positionInput import PositionInput
+from fingerMap import FingerMap
+import copy
+    
+class ViolinAnimation(EventBasedAnimationClass):
+    def __init__(self):
+        super(ViolinAnimation,self).__init__(1120,400)
+        self.timerDelay = 1000
+        
+    # CALCULATIVE FUNCTIONS
+    
+    def getScale(self,distance):
+        return distance*(448*self.halfStep/10000)
+        
+    def sumOfHalfSteps(self,distance):
+        sum = 0
+        for d in xrange(distance,-1,-1):
+            sum += int(round(self.halfStep-self.getScale(d)))
+        return sum
+        
+    def getYValue(self,x):
+        w = self.width
+        h = self.height
+        if self.string=='E5':
+            slopeE = (((h/2-(3*(8*h/100)/2))-(h/2-(3*(4*h/100)/2)))/((9*w/10)-(w/10)))+1
+            return (slopeE*(x-w/10))+(h/2-(3*(4*h/100)/2))
+        elif self.string=='A4':
+            slopeA = (((h/2-((8*h/100)/2))-(h/2-((4*h/100)/2)))/((9*w/10)-(w/10)))+1
+            print "slopeA",slopeA
+            return (slopeA*(x-w/10))+(h/2-((4*h/100)/2))
+        elif self.string=='D4':
+            slopeD = ((h/2+((8*h/100)/2))-(h/2+((4*h/100)/2)))/((9*w/10)-(w/10))
+            print "slopeD",slopeD
+            return (slopeD*(x-w/10))+(h/2+((4*h/100)/2))
+        else:
+            slopeG = ((h/2+(3*(8*h/100)/2))-(h/2+(3*(4*h/100)/2)))/((9*w/10)-(w/10))
+            print "slopeG", slopeG
+            return (slopeG*(x-w/10))+(h/2+(3*(4*h/100)/2))
+            
+    def findFingerPlace(self):
+        initPosIntrvl = FingerMap(self.score).getInterval(note.Note(self.string),self.note)
+        distance = initPosIntrvl.semitones
+        self.markerX=(self.width/10)+self.sumOfHalfSteps(distance)
+        print "x", self.markerX
+        self.markerY = self.getYValue(self.markerX)
+        print "y", self.markerY
+     
+    # MANIPULATIVE FUNCTIONS 
+    
+    def undo(self):
+        #puts the list about to be undone into redo list
+        self.redoLists += [copy.deepcopy(self.list)]
+        #sets the current list to the last list
+        self.list = self.undoLists[-1]
+        self.undoLists.pop()
+  
+    def redo(self):
+        #puts list about to be redone back into the prev list
+        self.undoLists += [copy.deepcopy(self.list)]
+        #sets current list to the list before undone
+        self.list = self.redoLists[-1]
+        self.redoLists.pop()
+        
+    def inputShit(self,event,part):
+        self.thing[part] = event.keysym
+        
+    def add(self):
+        self.undoLists += [copy.deepcopy(self.list)]
+        self.list += [self.thing]
+        self.thing= ["-","-","-"]
+        
+    def unhighlightOtherBox(self):
+        self.boxSelect[self.highlightedBoxI] = "white"
+               
+    def highlightBox(self,box):
+        self.boxSelect[box] = "green"
+        self.highlightedBoxI = box
+        
+    # AUDIO?
+    
+    def playAudio(self):
+        whole = stream.Stream()
+        part= stream.Part()
+        part.append(self.note)
+        whole.append(part)
+        audio = midi.realtime.StreamPlayer(whole)
+        audio.play()
+        
+    # CONTROLLERS
+        
+    def onMousePressed(self,event):
+        if self.startScreen:
+            # instructions button
+            if (self.width/2-(5*self.width/100))<=event.x<=(self.width/2+(5*self.width/100)) and (self.height/2-(11*self.height/100))<=event.y<=(self.height/2-(1*self.height/100)):
+                self.helpScreen = True
+                self.startScreen = False
+            # import music button
+            elif (self.width/2-(5*self.width/100))<=event.x<=(self.width/2+(5*self.width/100)) and (self.height/2+(1*self.height/100))<=event.y<=(self.height/2+(11*self.height/100)):
+                self.initScreen = True
+                self.startScreen = False
+                self.path = tkFileDialog.askopenfilename()
+                self.score = converter.parse(self.path)
+        elif self.helpScreen:
+            # back button
+            if (self.width/2-(5*self.width/100))<=event.x<=(self.width/2+(5*self.width/100)) and (85*self.height/100)<=event.y<=(95*self.height/100):
+                self.startScreen = True
+                self.helpScreen = False
+        elif self.initScreen:   
+            print self.boxSelect
+            # box to input measure, highlights
+            if (self.width/10)<=event.x<=(self.width/10+30) and (self.height/4-30)<=event.y<=self.height/4:
+                print "ok"
+                self.unhighlightOtherBox()
+                self.highlightBox(0)
+            # box to input note, highlights
+            elif self.width/10<=event.x<=(self.width/10+30) and (self.height/2-30)<=event.y<=self.height/2:
+                self.unhighlightOtherBox()
+                self.highlightBox(1)
+            # box to input finger, highlights
+            elif self.width/10<=event.x<=(self.width/10+30) and ((3*self.height/4)-30)<=event.y<=(3*self.height/4):
+                self.unhighlightOtherBox()
+                self.highlightBox(2)
+            # add button
+            elif self.width/10<=event.x<=2*self.width/10 and 85*self.height/100<=event.y<=95*self.height/100:
+                self.addErrorMessage = False
+                if "-" in self.thing:
+                    self.addErrorMessage = True
+                else:
+                    self.add()
+            # undo button
+            elif self.width/4<=event.x<=self.width/4+(5*self.width/100) and 86*self.height/100<=event.y<=94*self.height/100:
+                print "dam"
+                if self.undoLists!=[]:
+                    self.undo()
+                    print 
+            # redo button
+            elif 3*self.width/10<=event.x<=35*self.width/100 and 86*self.height/100<=event.y<=94*self.height/100:
+                if self.redoLists!=[]:
+                    self.redo()
+            # start button
+            elif 85*self.width/100<=event.x<=95*self.width/100 and 85*self.height/100<=event.y<=95*self.height/100:
+                self.otherInit()
+                self.gameScreen = True
+                self.initScreen = False
+            # back button
+            elif 7*self.width/10<=event.x<=8*self.width/10 and 85*self.height/100<=event.y<=95*self.height/100:
+                self.startScreen = True
+                self.initScreen = False
+                self.undoLists= []
+                self.list = []
+                self.redoLists = []
+        elif self.gameScreen:
+            # play/pause button
+            if 0<=event.x<=(self.width/10) and  (9*self.height/10)<=event.y<=self.height:
+                self.playing = not self.playing
+            # show/hide half steps button
+            elif (85*self.width/100)<=event.x<=(95*self.width/100) and (85*self.height/100)<=event.y<=(95*self.height/100):
+                self.showHalfSteps = not self.showHalfSteps
+            # back button
+            elif 85*self.width/100<=event.x<=95*self.width/100 and 5*self.height/100<=event.y<=self.height/10:
+                self.initScreen = True
+                self.gameScreen  = False
+       
+    def onKeyPressed(self,event):
+        if self.initScreen:
+            print event.keysym
+            # if the first box (for measures) is selected and a digit is pressed
+            if self.highlightedBoxI==0 and event.keysym.isdigit():
+                print "owo"
+                self.measureErrorMessage = False
+                # check if the measure is in the peice
+                try:
+                    self.score.parts[0].measure(int(event.keysym)).notesAndRests
+                    self.inputShit(event,0)
+                except:
+                    self.measureErrorMessage = True
+            # if the first box selected and invalid key pressed
+            elif self.highlightedBoxI==0 and not event.keysym.isdigit():
+                self.measureErrorMessage = True
+            # if the second box(for note) selected and letter pressed, refers to pitch
+            elif self.highlightedBoxI==1 and event.keysym.isalpha() and len(event.keysym)==1:
+                self.noteErrorMessage = False
+                if self.thing[0]=="-":
+                    self.noteErrorMessage = True
+                else:
+                    self.inputShit(event,1)
+            # if the second box selected and the next input is - or #, refers to the accidental of the pitch
+            elif self.highlightedBoxI==1 and self.thing[1].isalpha() and event.keysym=="minus" or event.keysym=="numbersign":
+                print "you"
+                if event.keysym == "numbersign":
+                    input = "#"
+                else:
+                    input = "-"
+                self.thing[1] += input
+            # if the second box is selected and the next input is digit, refers to octave
+            elif self.highlightedBoxI==1 and self.thing[1][0].isalpha() and event.keysym.isdigit():
+                print "hey"
+                self.noteErrorMessage = True
+                print "other", self.score.measure(int(self.thing[0])).notesAndRests
+                # checks if the note is in the selected measure
+                for n in self.score.parts[0].measure(int(self.thing[0])).notesAndRests:
+                    print "check", note.Note(self.thing[1]+event.keysym)
+                    print "n", n
+                    print "look"
+                    if n==note.Note(self.thing[1]+event.keysym):
+                        print "meh"
+                        self.thing[1] += event.keysym
+                        self.noteErrorMessage = False
+            # if second box is selected and invalid input
+            elif self.highlightedBoxI==1 and not event.keysym.isalpha() and not event.keysym.isdigit() and event.keysym!="minus" and event.keysym!="numbersign" and event.keysym!="Shift_L" and event.keysym!="Shift_R":
+                self.noteErrorMessage=  True
+            # if the last box(for finger) is selected and correct input
+            elif self.highlightedBoxI==2 and event.keysym in ["0","1","2","3","4"]:
+                self.errorMessageFingers = False
+                self.inputShit(event,2)
+            # if the last box selected and incorrect input
+            elif self.highlightedBoxI==2 and event.keysym in ["0","1","2","3","4"]:
+                self.errorMessageFingers = True
+            #elif event.keysym=="backspace":
+                #self.thing[self.highlightedBoxI].pop()
+        
+    def onTimerFired(self):
+        #if not at the end of finger map and still playing
+        if self.place<=(len(self.map)-2) and self.playing:
+            # move to the next finger
+            self.place += 1
+            print self.place
+            (self.note,self.position,self.string,self.finger) = self.map[self.place]
+            self.findFingerPlace()
+            self.color = self.colors[self.position-1]
+            self.playAudio()
+        # if at the end, go back to the beginning and pause
+        elif self.place>(len(self.map)-2):
+            self.place = -1
+            self.playing = False
+            
+    # VIEW
+            
+    def drawStartScreen(self):
+        # background
+        self.canvas.create_rectangle(0,0,self.width,self.height,fill= "teal")
+        # title
+        self.canvas.create_text(self.width/2,self.height/10,anchor= "center",
+                text= "Violin Cheat Sheet",font= "Arial 20 bold",fill= "red")
+        # draws instructions button
+        self.canvas.create_rectangle(self.width/2-(5*self.width/100),
+                self.height/2-(11*self.height/100),self.width/2+(5*self.width/100),
+                self.height/2-(1*self.height/100),fill= "blue")
+        # draws import music buttons
+        self.canvas.create_rectangle(self.width/2-(5*self.width/100),
+                self.height/2+(1*self.height/100),self.width/2+(5*self.width/100),
+                self.height/2+(11*self.height/100),fill= "blue")
+        # labels instructions button
+        self.canvas.create_text(self.width/2,self.height/2-(6*self.height/100),
+                anchor = "center",text = "Instructions",font = "Arial 20 bold",fill = "grey")
+        # labels import music button
+        self.canvas.create_text(self.width/2,self.height/2+(6*self.height/100),
+                anchor = "center",text = "Choose Music",font = "Arial 20 bold",fill = "grey")
+        
+    def drawHelpScreen(self):
+        # background
+        self.canvas.create_rectangle(0,0,self.width,self.height,fill= "teal")
+        # title
+        self.canvas.create_text(self.width/2,self.height/10,anchor= "center",
+                text = "Instructions",font="Arial 20 bold",fill= "red")
+        # instructions text
+        self.canvas.create_text(self.width/2,self.height/3,anchor= "center",
+                text="blah", font= "Arial 20 bold",fill= "red")
+        # back button
+        self.canvas.create_rectangle(self.width/2-(5*self.width/100),(85*self.height/100),
+                self.width/2+(5*self.width/100),(95*self.height/100),fill= "blue")
+        self.canvas.create_text(self.width/2,90*self.height/100,anchor= "center",
+                text= "back",font= "Arial 20 bold",fill= "grey")
+        
+    def drawInitScreen(self):
+        #screen
+        self.canvas.create_rectangle(0,0,self.width,self.height,fill= "teal")
+        #title and instructions
+        self.canvas.create_text(self.width/2,self.height/10,anchor= "center",
+                text= "input stuff",font= "Arial 20 bold",fill= "grey")
+        #box to input measure number
+        self.canvas.create_rectangle(self.width/10,self.height/4,
+                self.width/10+30,self.height/4-30,fill= self.boxSelect[0])
+        self.canvas.create_text(self.width/10+15,self.height/4-15, 
+                anchor= "center",text= self.thing[0],font= "Arial 10 bold",fill= "grey")
+        self.canvas.create_text(2*self.width/10,self.height/4-15,
+                anchor= "w",text= "measure",font= "Arial 10 bold",fill= "grey")
+        #box to input note
+        self.canvas.create_rectangle(self.width/10,self.height/2,
+                self.width/10+30,self.height/2-30,fill= self.boxSelect[1])
+        self.canvas.create_text(self.width/10+15,self.height/2-15,
+                anchor= "center",text= self.thing[1],font= "Arial 10 bold",fill= "grey")
+        self.canvas.create_text(2*self.width/10,self.height/2-15,
+                anchor= "w",text= "note",font= "Arial 10 bold",fill= "grey")
+        #box to input finger
+        self.canvas.create_rectangle(self.width/10,(3*self.height/4),
+                self.width/10+30,(3*self.height/4)-30,fill= self.boxSelect[2])
+        self.canvas.create_text(self.width/10+15,(3*self.height/4)-15,
+                anchor= "center",text= self.thing[2],font= "Arial 10 bold",fill= "grey")
+        self.canvas.create_text(2*self.width/10,(3*self.height/4)-15,
+                anchor= "w",text= "finger",font= "Arial 10 bold",fill= "grey")
+        #add button
+        self.canvas.create_rectangle(self.width/10,85*self.height/100,
+                2*self.width/10,95*self.height/100,fill= "orange")
+        self.canvas.create_text(15*self.width/100,9*self.height/10,
+                anchor= "center",text= "add",font= "Arial 10 bold", fill= "grey")
+        #undo button
+        self.canvas.create_rectangle(self.width/4,86*self.height/100,
+                self.width/4+(5*self.width/100),94*self.height/100,fill= "blue")
+        self.canvas.create_text((self.width/4+(5*self.width/100)/2),
+                90*self.height/100,anchor= "center",text= "undo",
+                font= "Arial 8 bold",fill= "grey")
+        #redo button
+        self.canvas.create_rectangle(3*self.width/10,86*self.height/100,
+                35*self.width/100,94*self.height/100,fill= "pink")
+        self.canvas.create_text((65*self.width/100)/2,9*self.height/10,
+                text= "redo",font= "Arial 8 bold",fill= "grey")
+        #list of fingers changed
+        self.canvas.create_text(9*self.width/10,self.height/10,
+                anchor= "center",text= str(["measure","note","finger"]),
+                font= "Arial 10 bold", fill= "orange")
+        y = 0
+        for i in xrange(len(self.list)):
+            y+=15
+            self.canvas.create_text(9*self.width/10,self.height/10+y,
+                    anchor= "center",text= str(self.list[i]),
+                    font= "Arial 10 bold", fill= "orange")
+        #playbutton
+        self.canvas.create_rectangle(85*self.width/100,85*self.height/100,
+                95*self.width/100,95*self.height/100,fill= "green")
+        self.canvas.create_text(90*self.width/100,90*self.height/100,
+                anchor= "center",text= "play",font = "Arial 10 bold",fill= "grey")
+        #backbutton
+        self.canvas.create_rectangle(7*self.width/10,85*self.height/100,
+                8*self.width/10,95*self.height/100,fill= "purple")
+        self.canvas.create_text(3*self.width/4,9*self.height/10,
+                anchor= "center",text= "back",font= "Arial 10 bold",fill= "grey")
+    
+    # game screen helpers
+    
+    def drawFingerNumber(self):
+        self.canvas.create_text(self.markerX,self.markerY,anchor= "center",
+                text= self.finger,fill= "grey", font= "Arial 10 bold")
+        
+    def drawFingerMarker(self):
+        self.canvas.create_oval(self.markerX+self.r,self.markerY+self.r,
+                self.markerX-self.r,self.markerY-self.r, fill= self.color)
+        
+    def drawHalfSteps(self):
+        for distance in xrange(0,24):
+            print "distance", distance
+            scale = self.getScale(distance)
+            print "scale", scale
+            sum = self.sumOfHalfSteps(distance)
+            print "sum",sum
+            half = self.width/10
+            print "half", half
+            x = self.width/10+sum
+            print "x", x
+            self.canvas.create_line(x,self.height/2+(2*self.height/10),
+                    x,self.height/2-(2*self.height/10),fill= 'red')
+        
+    def drawEString(self):
+        self.canvas.create_line(self.width/10,self.height/2-(3*(4*self.height/100)/2),
+                9*self.width/10,self.height/2-(3*(8*self.height/100)/2),fill= "blue")
+        
+    def drawAString(self):
+        self.canvas.create_line(self.width/10,self.height/2-((4*self.height/100)/2),
+                9*self.width/10,self.height/2-((8*self.height/100)/2),fill= "green")
+        
+    def drawDString(self):
+        self.canvas.create_line(self.width/10,self.height/2+((4*self.height/100)/2),
+                9*self.width/10,self.height/2+((8*self.height/100)/2),fill= "orange")
+        
+    def drawGString(self):
+        self.canvas.create_line(self.width/10,self.height/2+(3*(4*self.height/100)/2),
+                9*self.width/10,self.height/2+(3*(8*self.height/100)/2),fill= "red")
+        
+    def drawFingerBoard(self):
+        width = self.width
+        height = self.height
+        self.canvas.create_polygon((width/10,height/2-(height/10)),
+                                   (width/10,height/2+(height/10)),
+                                   (9*width/10,height/2+(2*height/10)),
+                                   (9*width/10,height/2-(2*height/10)),
+                                   fill = 'black')
+        self.drawEString()
+        self.drawAString()
+        self.drawDString()
+        self.drawGString()
+                                   
+    def drawPositionKey(self):
+        self.canvas.create_text(0,self.height/10,anchor= "sw",text= "Position Color Key",
+                font= "Arial 10 bold",fill= "grey")
+        y= 0
+        for key in xrange(8):
+            y += 12
+            color = self.colors[key]
+            position = key+1
+            self.canvas.create_rectangle(0,self.height/10+y,10,(self.height/10+y)+10,fill= color)
+            self.canvas.create_text(15,((self.height/10+y)+((self.height/10+y)+10))/2,
+                    anchor= "center",text= position,font= "Arial 9 bold",fill= "grey") 
+            
+    def drawShowHalfStepsButton(self):
+        self.canvas.create_rectangle(85*self.width/100,85*self.height/100,
+                95*self.width/100,95*self.height/100,fill= "teal")
+        self.canvas.create_text(90*self.width/100,90*self.height/100,
+                anchor= "center",text= "Show Half Steps",font= "Arial 20 bold",fill= "red")
+        
+    def drawHideHalfStepsButton(self):
+        self.canvas.create_rectangle(85*self.width/100,85*self.height/100,
+                95*self.width/100,95*self.height/100,fill= "teal")
+        self.canvas.create_text(90*self.width/100,90*self.height/100,
+                anchor= "center",text= "Hide Half Steps",font= "Arial 20 bold",fill= "red")
+        
+    def drawPlayButton(self):
+        self.canvas.create_rectangle(0,9*self.height/10,self.width/10,self.height, fill= "teal")
+        # triangle
+        self.canvas.create_polygon((3*self.width/100,92*self.height/100),
+                (3*self.width/100,98*self.height/100),(6*self.width/100,95*self.height/100),
+                fill= "red",outline= "black")
+        
+    def drawPauseButton(self):
+        self.canvas.create_rectangle(0,9*self.height/10,self.width/10,self.height, fill= "teal")
+        # first rectangle in pause symbol
+        self.canvas.create_rectangle(3*self.width/100,93*self.height/100,
+                4*self.width/100,97*self.height/100,fill= "red")
+        # second rectangle in pause symbol
+        self.canvas.create_rectangle(45*self.width/1000,93*self.height/100,
+                55*self.width/1000,97*self.height/100,fill= "red")
+     
+    def drawGameScreen(self):
+        self.canvas.create_rectangle(0,0,self.width,self.height,fill = "white")
+        self.drawFingerBoard()
+        self.drawPositionKey()
+        if not self.playing:
+            self.drawPlayButton()
+        else:
+            self.drawPauseButton()
+        if not self.showHalfSteps:
+            self.drawShowHalfStepsButton()
+        else:
+            self.drawHideHalfStepsButton()
+        
+        if self.markerX!=None and self.markerY!=None:
+            self.drawFingerMarker()
+            self.drawFingerNumber()
+        # back button
+        self.canvas.create_rectangle(85*self.width/100,5*self.height/100,
+                95*self.width/100,self.height/10,fill= "purple")
+        self.canvas.create_text(9*self.width/10,5*self.height/100+(5*self.height/100)/2,
+                anchor= "center",text= "back",font= "Arial 10 bold", fill= "grey")
+        
+    def redrawAll(self):
+        self.canvas.delete(ALL)
+        if self.startScreen:
+            self.drawStartScreen()
+        if self.helpScreen:
+            self.drawHelpScreen()
+        if self.initScreen:
+            self.drawInitScreen()
+            if self.measureErrorMessage:
+                self.canvas.create_text(self.width/10,self.height/4+20,anchor= "w",
+                        text= "your input must both be an interger and a valid measure in the peice",font= "Arial 10 bold", fill = "red")
+            elif self.noteErrorMessage:
+                self.canvas.create_text(self.width/10,self.height/2+20,anchor= "w",
+                        text= "your input must both be an letter corresponding to the pitch immediatly followed by a number corresponding to the octave/nyour note must also be in the measure you indicated above, so make sure you have indicated a measure",font= "Arial 10 bold", fill= "red")
+            elif self.fingerErrorMessage:
+                self.canvas.create_text(self.width/10,(3*self.height/4)+20,anchor= "w",
+                        text= "your input must be an integer from 0-4",font= "Arial 10 bold", fill= "red")
+            elif self.addErrorMessage:
+                self.canvas.create_text(85*self.width/100,8*self.height/10,anchor= "w",
+                        text= "fill in all boxes first",font= "Arial 10 bold",fill= "grey")
+        if self.gameScreen:
+            self.drawGameScreen()
+    
+    # INITS
+    
+    def otherInit(self):
+        if len(self.list)>0:
+            PositionInput(self.score,self.list).inputPositions()
+            self.score.show()
+        self.map = FingerMap(self.score).getFingerMap()
+        (self.note,self.position,self.string,self.finger) = self.map[self.place]
+        self.color = self.colors[self.position-1]
+        
+    def initAnimation(self):
+        #manipulative attributes
+        self.highlightedBoxI = 0
+        self.thing = ["-","-","-"]
+        self.list = []
+        self.undoLists = []
+        self.redoLists = []
+        self.boxSelect = ["white","white","white"]
+        #turns screens on/off
+        self.startScreen = True
+        self.helpScreen = False
+        self.initScreen = False
+        self.gameScreen = False
+        #game screen attributes
+        self.playing = False
+        self.showHalfSteps = False
+        self.halfStep= 5*self.width/100
+        self.place = -1
+        self.map = []
+        self.r = 10
+        self.colors = ["white","orange","red","green","blue","purple","yellow","teal"]
+        self.markerX = None
+        self.markerY = None
+        #error messages
+        self.measureErrorMessage = False
+        self.noteErrorMessage = False
+        self.fingerErrorMessage = False
+        self.fileTypeErrorMessage = False
+        self.addErrorMessage = False
+        
+        
+ViolinAnimation().run()
