@@ -1,0 +1,21 @@
+from music21 import *
+
+class PositionInput(object):
+    def __init__(self,score,list):
+        self.score = score
+        self.list = list
+        self.vlnPart = self.score.getElementById('Violin')
+        
+    def inputPosition(self):
+        for note in self.measure:
+            if note == self.n:
+                note.addLyric(self.finger)
+                #if self.string!=None:
+                    #note.addLyric(self.string)
+        
+    def inputPositions(self):
+        for element in self.list:
+            self.measure = self.vlnPart.measure(int(element[0]))
+            self.n = note.Note(element[1])
+            self.finger = int(element[2])
+            self.inputPosition()
